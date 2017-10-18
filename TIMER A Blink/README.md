@@ -1,15 +1,135 @@
 # TIMER A Blink
-The TIMER peripherals can be used in many situations thanks to it flexibility in features. For this lab, you will be only scratching the surface as to what this peripheral can do. 
 
-## Up, Down, Continuous 
-There are a few different ways that the timer module can count. For starters, one of the easiest to initialize is Continuous counting where in the TIMER module will alert you when its own counting register overflows. Up mode allows you to utilize a Capture/Compare register to have the counter stop at a particular count and then start back over again. You can also set the TIMER to Up/Down mode where upon hitting a counter or the overflow, instead of setting the counter back to zero, it will count back down to zero. 
+Control the speed of two LEDs using a TIMER module on 5 different MSP430 microcontrollers:
 
-## Task
-Using the TIMER module instead of a software loop, control the speed of two LEDS blinking on your development boards. Experiment with the different counting modes available as well as the effect of the pre-dividers. Why would you ever want to use a pre-divider? What about the Capture and Compare registers? Your code should include a function (if you want, place it in its own .c and .h files) which can convert a desired Hz into the proper values required to operate the TIMER modules.
+* MSP430G2553
+* MSP430F5529
+* MSP430FR2311
+* MSP430FR5994
+* MSP430FR6989
+ 
+## Code Configuration
 
-### Extra Work
-#### Thinking with HALs
-So maybe up to this point you have noticed that your software is looking pretty damn similar to each other for each one of these boards. What if there was a way to abstract away all of the particulars for a processor and use the same functional C code for each board? Just for this simple problem, why don't you try and build a "config.h" file which using IFDEF statements can check to see what processor is on board and initialize particular registers based on that.
+The following code can be used on all of the boards with a slight change in code for the FR2311. The only other change that is needed to be made is the pin assignments labeled as x's for LED1 and y's for LED2
 
-#### Low Power Timers
-Since you should have already done a little with interrupts, why not build this system up using interrupts and when the processor is basically doing nothing other than burning clock cycles, drop it into a Low Power mode. Do a little research and figure out what some of these low power modes actually do to the processor, then try and use them in your code. If you really want to put your code to the test, using the MSP430FR5994 and the built in super cap, try and get your code to run for the longest amount of time only using that capacitor as your power source.
+```c
+	#include <msp430.h>
+
+	int num_cycles(int desired_blink_freq);  //Function for blink frequency
+
+	int main(void)
+	{
+    		WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    		PM5CTL0 &= ~LOCKLPM5;       // Disable the GPIO power-on default high-impedance mode
+
+
+    		int desired_blink_freq = 5; //Change to desired blink frequency
+
+   		PxDIR |= BITx; 
+    		PyDIR |= BITy; // Set LEDs to outputs
+    		PxOUT &= ~BITx;
+    		PyOUT &= ~BITy;
+
+								// USE THIS CODE FOR FR2311
+    		TA0CCTL0 |= CCIE;				// TB0CCTL0 |= CCIE;
+    		TA0CTL |= TBSSEL_1 + MC_1;			// TB0CTL |= TBSSEL_1 + MC_1;
+    		TA0CCTL0 &= 0x10;				// TB0CCTL0 &= 0x10;
+    		TA0CCR0 |= num_cycles(desired_blink_freq);	// TB0CCR0 |= num_cycles(desired_blink_freq);
+    		TA1CCTL0 |= CCIE;				// TB1CCTL0 |= CCIE;
+    		TA1CTL |= TBSSEL_1 + MC_1;			// TB1CTL |= TBSSEL_1 + MC_1;
+    		TA1CCTL0 &= 0x10;				// TB1CCTL0 &= 0x10;
+    		TA1CCR0 |= num_cycles(desired_blink_freq/2);	// TB1CCR0 |= num_cycles(desired_blink_freq/2);
+
+    		__enable_interrupt();
+    		_BIS_SR(LPM1_bits + GIE);
+
+
+		}
+
+		#pragma vector=TIMER0_B0_VECTOR  // Define interrupt vector, in this case Port 1
+		__interrupt void Timer0_A0(void) // Define interrupt function that runs whenever interrupt is detected
+		{
+    			PxOUT ^= BITx;   // Toggle P1.0 (LED)
+		}
+		#pragma vector=TIMER1_B0_VECTOR  // Define interrupt vector, in this case Port 1
+		__interrupt void Timer1_A0(void) // Define interrupt function that runs whenever interrupt is detected
+		{
+    			PyOUT ^= BITy;
+		}
+
+		int num_cycles(int desired_blink_freq)
+		{
+   			int cycles;
+   			cycles = 32768/desired_blink_freq;
+   			return cycles;
+		}
+```
+
+## Pin Assignments
+
+```c		
+		   LED1		LED2	BUTTON
+* MSP430G2553	=> P1.0 	P1.6	P1.3
+* MSP430F5529	=> P1.0 	P4.7	P2.1
+* MSP430FR2311	=> P1.0 	P2.0	P1.1
+* MSP430FR5994	=> P1.0 	P1.1	P5.6
+* MSP430FR6989	=> P1.0 	P9.7	P1.1
+```
+
+## Code Example
+
+Use Timer A on the MSP430F5529 to blink 2 LEDs at different frequencies
+
+```c
+	#include <msp430.h>
+
+	int num_cycles(int desired_blink_freq);
+
+	int main(void)
+	{
+    		WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    		PM5CTL0 &= ~LOCKLPM5;                   // Disable the GPIO power-on default high-impedance mode
+
+
+    		int desired_blink_freq = 5;
+
+    		P1DIR |= BIT0;
+    		P4DIR |= BIT7; // Set LEDs to outputs
+    		P1OUT &= ~BIT0;
+    		P4OUT &= ~BIT7;
+
+		TA0CCTL0 |= CCIE;
+    		TA0CTL |= TASSEL_1 + MC_1;
+    		TA0CCTL0 &= 0x10;
+    		TA0CCR0 |= num_cycles(desired_blink_freq);
+    		TA1CCTL0 |= CCIE;
+    		TA1CTL |= TASSEL_1 + MC_1;
+    		TA1CCTL0 &= 0x10;
+    		TA1CCR0 |= num_cycles(desired_blink_freq/2);
+
+    		__enable_interrupt();
+    		_BIS_SR(LPM1_bits + GIE);
+		
+
+		}
+
+		#pragma vector=TIMER0_A0_VECTOR  // Define interrupt vector, in this case Port 1
+		__interrupt void Timer0_A0(void) // Define interrupt function that runs whenever interrupt is detected
+		{
+    			P1OUT ^= BIT0;   // Toggle P1.0 (LED)
+		}
+		#pragma vector=TIMER1_A0_VECTOR  // Define interrupt vector, in this case Port 1
+		__interrupt void Timer1_A0(void) // Define interrupt function that runs whenever interrupt is detected
+		{
+    			P4OUT ^= BIT7;
+		}
+
+		int num_cycles(int desired_blink_freq)
+		{
+   			int cycles;
+   			cycles = 32768/desired_blink_freq;
+   			return cycles;
+		}
+```
+
+
